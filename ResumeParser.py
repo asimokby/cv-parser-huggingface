@@ -17,12 +17,46 @@ class ResumeParser:
         resume_segments = self.segmenter.segment(resume_lines)
         print("Parsing the Resume...")
         for segment_name in resume_segments:
-            if segment_name == "work_and_employment":
+            if segment_name == "contact_info":
+                contact_info = resume_segments[segment_name]
+                self.parse_contact_info(contact_info)
+            elif segment_name == "work_and_employment":
                 resume_segment = resume_segments[segment_name]
                 self.parse_job_history(resume_segment)
-                break
         return self.parsed_cv
 
+
+    def parse_contact_info(self, contact_info):
+        contact_info_dict = {}
+        name = self.find_person_name(contact_info)
+        email = self.find_contact_email(contact_info)
+        self.parsed_cv['Name'] = name
+        contact_info_dict["Email"] = email
+        self.parsed_cv['Contact Info'] = contact_info_dict
+
+    def find_person_name(self, items):
+        class_score = []
+        splitter = re.compile(r'[{}]+'.format(re.escape(punctuation.replace("&", "") )))
+        classes = ["person name", "address", "email", "title"]
+        for item in items: 
+            elements = splitter.split(item)
+            for element in elements:
+                element = ''.join(i for i in element.strip() if not i.isdigit())
+                if not len(element.strip().split()) > 1: continue
+                out = self.zero_shot_classifier(element, classes)
+                highest = sorted(zip(out["labels"], out["scores"]), key=lambda x: x[1])[-1]
+                if highest[0] == "person name":
+                    class_score.append((element, highest[1]))
+        if len(class_score):
+            return sorted(class_score, key=lambda x: x[1], reverse=True)[0][0]
+        return ""
+    
+    def find_contact_email(self, items):
+        for item in items: 
+            match = re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', item)
+            if match:
+                return match.group(0)
+        return ""
 
     def parse_job_history(self, resume_segment):
         idx_job_title = self.get_job_titles(resume_segment)
