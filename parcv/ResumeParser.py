@@ -1,21 +1,18 @@
-from Models import Models
-from ResumeSegmenter import ResumeSegmenter
+from parcv.Models import Models
 from datetime import datetime
 from dateutil import parser
 import re
 from string import punctuation
+from collections import Counter
 
 class ResumeParser:
 
-    def __init__(self):
+    def __init__(self, ner, ner_dates, zero_shot_classifier, tagger):
         self.models = Models()
-        self.segmenter = ResumeSegmenter()
-        self.ner_dates, self.ner, self.zero_shot_classifier, self.tagger = self.models.load_pickled_models()  
+        self.ner, self.ner_dates, self.zero_shot_classifier, self.tagger = ner, ner_dates, zero_shot_classifier, tagger
         self.parsed_cv = {}
 
-    def parse(self, resume_lines):
-        resume_segments = self.segmenter.segment(resume_lines)
-        print("Parsing the Resume...")
+    def parse(self, resume_segments):
         for segment_name in resume_segments:
             if segment_name == "contact_info":
                 contact_info = resume_segments[segment_name]
@@ -85,23 +82,28 @@ class ResumeParser:
         self.parsed_cv["Job History"] = job_history 
 
     def get_job_titles(self, resume_segment):
-        classes = ["organization", "institution", "job title", "role"]
+        classes = ["organization", "institution", "company", "job title", "work details"]
         idx_line = []
         for idx, line in enumerate(resume_segment):
             has_verb = False
-            sentence = self.models.get_flair_sentence(line)
+            line_modifed = ''.join(i for i in line if not i.isdigit())
+            sentence = self.models.get_flair_sentence(line_modifed)
             self.tagger.predict(sentence)
+            tags = []
             for entity in sentence.get_spans('pos'):
+                tags.append(entity.tag)
                 if entity.tag.startswith("V"): 
                     has_verb = True
-                    break
-            if not has_verb:
-                out = self.zero_shot_classifier(line, classes)
-                class_score = zip(out["labels"], out["scores"])
-                highest = sorted(class_score, key=lambda x: x[1])[-1]
 
-                if highest[0] == "job title":
-                    idx_line.append((idx, line))
+            most_common_tag = max(set(tags), key=tags.count)
+            if most_common_tag == "NNP":
+                if not has_verb:
+                    out = self.zero_shot_classifier(line, classes)
+                    class_score = zip(out["labels"], out["scores"])
+                    highest = sorted(class_score, key=lambda x: x[1])[-1]
+
+                    if highest[0] == "job title":
+                        idx_line.append((idx, line))
 
         return idx_line
     

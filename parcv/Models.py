@@ -9,14 +9,18 @@ import pickle
 class Models:
 
     def pickle_it(self, obj, file_name):
-        with open(f'pickled_models/{file_name}.pickle', 'wb') as f:
+        with open(f'{file_name}.pickle', 'wb') as f:
             pickle.dump(obj, f)
 
     def unpickle_it(self, file_name):
-        with open(f'pickled_models/{file_name}.pickle', 'rb') as f:
+        with open(f'{file_name}.pickle', 'rb') as f:
             return pickle.load(f)
 
-    def load_trained_models(self, pickle=True):
+    def load_trained_models(self, pickle=False, load_pickled=False):
+
+        if load_pickled:
+            return self.load_pickled_models()
+
         #NER (dates)
         tokenizer = AutoTokenizer.from_pretrained("Jean-Baptiste/camembert-ner-with-dates")
         model = AutoModelForTokenClassification.from_pretrained("Jean-Baptiste/camembert-ner-with-dates")
@@ -32,24 +36,31 @@ class Models:
         self.ner = pipeline('ner', model=model, tokenizer=tokenizer, grouped_entities=True)
 
         # Pos Tagging
-        self.tagger = SequenceTagger.load("flair/pos-english-fast")
+        self.tagger = SequenceTagger.load("flair/pos-english")
 
         if pickle:
             self.pickle_models()
+        
+        return self.ner, self.ner_dates, self.zero_shot_classifier, self.tagger
+
     
     def pickle_models(self):
         self.pickle_it(self.ner, "ner")
         self.pickle_it(self.zero_shot_classifier, "zero_shot_classifier_6")
         self.pickle_it(self.ner_dates, "ner_dates")
-        self.pickle_it(self.tagger, "pos_tagger_fast")
+        self.pickle_it(self.tagger, "pos_tagger")
 
 
     def load_pickled_models(self):
-        ner_dates = self.unpickle_it('ner_dates')
-        ner = self.unpickle_it('ner')
-        zero_shot_classifier = self.unpickle_it('zero_shot_classifier_6')
-        tagger = self.unpickle_it("pos_tagger_fast")
-        return ner_dates, ner, zero_shot_classifier, tagger
+        try:
+            ner_dates = self.unpickle_it('ner_dates')
+            ner = self.unpickle_it('ner')
+            zero_shot_classifier = self.unpickle_it('zero_shot_classifier_6')
+            tagger = self.unpickle_it("pos_tagger")
+            print("all good")
+        except: 
+            self.load_trained_models(pickle=True, load_pickled=False)
+        return ner, ner_dates, zero_shot_classifier, tagger
     
     def get_flair_sentence(self, sent):
         return Sentence(sent)

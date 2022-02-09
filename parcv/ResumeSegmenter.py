@@ -1,9 +1,9 @@
-from Models import Models 
+from parcv.Models import Models 
 
 class ResumeSegmenter:
 
-    def __init__(self):
-        _,_,self.zero_shot_classifier,_ = Models().load_pickled_models()
+    def __init__(self, zero_shot_classifier):
+        self.zero_shot_classifier = zero_shot_classifier
 
     objective = (
         'career goal',
