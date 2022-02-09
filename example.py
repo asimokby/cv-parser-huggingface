@@ -1,7 +1,7 @@
 from parcv import parcv
 
 parser = parcv.Parser(pickle=True, load_pickled=True)
-json_output = parser.parse('cvs/ali_cakmak_cv.pdf')
+json_output = parser.parse('example_pdf.pdf')
 print(json_output)
 
 
