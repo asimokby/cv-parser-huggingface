@@ -2,6 +2,7 @@
 
 A CV parser built with Hugging Face. The tool parses only the Job History, name, and email for now. Here is a [demo](https://huggingface.co/spaces/asimokby/cv-parser-huggingface) 🚀 on HuggingFace Spaces.
 
+![image](https://user-images.githubusercontent.com/34512671/153226336-e8b0388b-57de-46d0-9d21-cbe29a528be5.png)
 
 ## Installation
 
