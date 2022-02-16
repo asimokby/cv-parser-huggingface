@@ -14,8 +14,7 @@ class Parser:
 
     def parse(self, file_path):
         self.resume_lines = self.reader.read_file(file_path)
-        self.resume_segments = self.segmenter.segment(self.resume_lines)
-        self.output = self.parser.parse(self.resume_segments)
+        self.output = self.parser.parse(self.resume_lines)
         return self.output
 
     def save_as_json(self, file_name="output.json"):
