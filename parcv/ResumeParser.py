@@ -1,27 +1,124 @@
+from matplotlib.pyplot import contour
 from parcv.Models import Models
 from datetime import datetime
 from dateutil import parser
 import re
 from string import punctuation
 from collections import Counter
+import timeit
 
 class ResumeParser:
 
-    def __init__(self, ner, ner_dates, zero_shot_classifier, tagger):
+    def __init__(self, ner, ner_dates, zero_shot_classifier, tagger, qa_squad):
         self.models = Models()
-        self.ner, self.ner_dates, self.zero_shot_classifier, self.tagger = ner, ner_dates, zero_shot_classifier, tagger
+        self.ner, self.ner_dates, self.zero_shot_classifier, self.tagger, self.qa_squad = ner, ner_dates, zero_shot_classifier, tagger, qa_squad
         self.parsed_cv = {}
 
     def parse(self, resume_segments):
         for segment_name in resume_segments:
             if segment_name == "contact_info":
                 contact_info = resume_segments[segment_name]
-                self.parse_contact_info(contact_info)
+                self.new_parse_contact_info(contact_info)
             elif segment_name == "work_and_employment":
                 resume_segment = resume_segments[segment_name]
-                self.parse_job_history(resume_segment)
+                self.new_parse_job_history(resume_segment)
+
+        # resume_segment = resume_segments['work_and_employment']
+        # res = self.get_job_titles(resume_segment)
+
+        # print(res)
+        # self.find_job_titles(resume_segment)
+        # qa_input = {'question': "What is the job name?", 'context': cv_text}
+        # out = self.qa_squad(qa_input)
+        # print(cv_text)
+        # print(out)
         return self.parsed_cv
 
+
+    def new_find_person_name(self, contact_info):
+        context = ' , '.join(contact_info)
+        qa_input = {'question': "What is the person's name?", 'context': context}
+        out = self.qa_squad(qa_input)
+        return out['answer']
+
+    def find_job_titles(self, resume_segment):
+        labels = ["company", "institution", "job title", "details"]
+        idx_line = []
+        for idx, line in enumerate(resume_segment):
+            splitter = re.compile(r'[\s{}]+'.format(re.escape(punctuation)))
+            answer_splitted = splitter.split(line)
+            answer_splitted = [i for i in answer_splitted if i and not i.isdigit() and i.isalpha() ]
+            # print(answer_splitted)
+            capitalized = all([True if i[0].isupper() else False for i in answer_splitted])
+            if len(answer_splitted) > 2:
+                num_of_1 = sum([True if i[0].isupper() else False for i in answer_splitted])
+                capitalized = num_of_1 > len(answer_splitted)//2
+            if not capitalized: continue
+
+            qa_input = {'question': "What is the job name?", 'context': line}
+            out = self.qa_squad(qa_input)
+            answer = out['answer']
+            if self.belongs_to_label(line, "job title", labels):
+                if answer:
+                    idx_line.append((idx, answer))
+
+        return idx_line
+
+    def belongs_to_label(self, sequence, label, labels):
+        res = self.zero_shot_classifier(sequence, labels)
+        class_score = zip(res["labels"], res["scores"])
+        highest = sorted(class_score, key=lambda x: x[1])[-1]
+        if highest[0] == label:
+            return True
+        return False
+
+
+    def new_parse_contact_info(self, contact_info):
+        contact_info_dict = {}
+        name = self.new_find_person_name(contact_info)
+        email = self.find_contact_email(contact_info)
+        phone1, phone2 = self.find_phone_numbers(contact_info) 
+        address = self.find_address(contact_info)
+        contact_info_dict["Email"] = email
+        if phone1: 
+            contact_info_dict["phone1"] = phone1 
+        if phone2:
+            contact_info_dict["phone2"] = phone2
+        if address: 
+            contact_info_dict['address'] = address
+        self.parsed_cv['Name'] = name
+        self.parsed_cv['Contact Info'] = contact_info_dict
+
+    def find_phone_numbers(self, contact_info):
+        context = ' , '.join(contact_info)
+        print(context)
+        qa_input = {'question': "What is the phone number?", 'context': context}
+        out = self.qa_squad(qa_input)
+        answer1 = out['answer'] 
+        context = context.replace(answer1, "")
+        qa_input = {'question': "What is the phone number?", 'context': context}
+        answer2 = self.qa_squad(qa_input)['answer']
+        count_nums = lambda x: len([i for i in x if i and i.isdigit()])
+
+        if count_nums(answer1) < 7:
+            answer1 = ""
+        if count_nums(answer2) < 7:
+            answer2 = ""
+        return answer1, answer2 
+    
+
+    def find_address(self, contact_info):
+        context = ' , '.join(contact_info)
+        qa_input = {'question': "What is the address?", 'context': context}
+        address = self.qa_squad(qa_input)['answer']
+        labels = ['address', 'email', 'phone number', 'other']
+        if self.belongs_to_label(address, "address",labels):
+            return address
+        else: 
+            return ""
+
+
+        
 
     def parse_contact_info(self, contact_info):
         contact_info_dict = {}
@@ -55,8 +152,55 @@ class ResumeParser:
                 return match.group(0)
         return ""
 
+    def new_get_job_company(self, line1, line2, resume_segment):
+        context = resume_segment[line1]
+        if line2 <= len(resume_segment)-1:
+            context = context + " , " + resume_segment[line2]
+        qa_input = {'question': "What is the company's name?", 'context': context}
+        out = self.qa_squad(qa_input)
+        return out['answer']
+
+
+
+    def new_parse_job_history(self, resume_segment):
+        timm = timeit.default_timer()
+        idx_job_title = self.find_job_titles(resume_segment)
+        stp = timeit.default_timer()
+        print(stp - timm)
+        current_and_below = False
+        if not len(idx_job_title): 
+            self.parsed_cv["Job History"] = [] 
+            return
+        if idx_job_title[0][0] == 0: current_and_below = True
+        job_history = []
+        for ls_idx, (idx, job_title) in enumerate(idx_job_title): 
+            job_info = {}
+            # job_info["Job Title"] = self.filter_job_title(job_title) 
+            job_info["Job Title"] = job_title 
+            # company 
+            if current_and_below: line1, line2 = idx, idx+1
+            else: line1, line2 = idx, idx-1 
+            # job_info["Company"] = self.get_job_company(line1, line2, resume_segment)
+            
+            job_info["Company"] = self.new_get_job_company(line1, line2, resume_segment)
+
+
+            if current_and_below: st_span = idx
+            else: st_span = idx-1
+            # print("done companies")
+            # Dates 
+            if ls_idx == len(idx_job_title) - 1: end_span = len(resume_segment) 
+            else: end_span = idx_job_title[ls_idx+1][0]
+            start, end = self.get_job_dates(st_span, end_span, resume_segment)
+            job_info["Start Date"] = start
+            job_info["End Date"] = end
+            job_history.append(job_info)
+            # print("done dates")
+        self.parsed_cv["Job History"] = job_history 
+
     def parse_job_history(self, resume_segment):
         idx_job_title = self.get_job_titles(resume_segment)
+        # print("done jobs")
         current_and_below = False
         if not len(idx_job_title): 
             self.parsed_cv["Job History"] = [] 
@@ -66,12 +210,15 @@ class ResumeParser:
         for ls_idx, (idx, job_title) in enumerate(idx_job_title): 
             job_info = {}
             job_info["Job Title"] = self.filter_job_title(job_title) 
+            # job_info["Job Title"] = job_title 
             # company 
             if current_and_below: line1, line2 = idx, idx+1
             else: line1, line2 = idx, idx-1 
             job_info["Company"] = self.get_job_company(line1, line2, resume_segment)
+            # print(line1, line2)
             if current_and_below: st_span = idx
             else: st_span = idx-1
+            # print("done companies")
             # Dates 
             if ls_idx == len(idx_job_title) - 1: end_span = len(resume_segment) 
             else: end_span = idx_job_title[ls_idx+1][0]
@@ -79,6 +226,7 @@ class ResumeParser:
             job_info["Start Date"] = start
             job_info["End Date"] = end
             job_history.append(job_info)
+            # print("done dates")
         self.parsed_cv["Job History"] = job_history 
 
     def get_job_titles(self, resume_segment):

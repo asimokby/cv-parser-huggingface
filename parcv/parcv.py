@@ -10,11 +10,12 @@ class Parser:
         self.__load_models(pickle, load_pickled)
         self.reader = ResumeReader()
         self.segmenter = ResumeSegmenter(self.zero_shot_classifier)
-        self.parser = ResumeParser(self.ner, self.ner_dates, self.zero_shot_classifier, self.tagger) 
+        self.parser = ResumeParser(self.ner, self.ner_dates, self.zero_shot_classifier, self.tagger, self.qa_squad) 
 
     def parse(self, file_path):
         self.resume_lines = self.reader.read_file(file_path)
-        self.output = self.parser.parse(self.resume_lines)
+        self.resume_segments = self.segmenter.segment(self.resume_lines) 
+        self.output = self.parser.parse(self.resume_segments)
         return self.output
 
     def save_as_json(self, file_name="output.json"):
@@ -30,5 +31,5 @@ class Parser:
         return self.resume_segments
     
     def __load_models(self, pickle,  load_pickled):
-        self.ner, self.ner_dates, self.zero_shot_classifier, self.tagger = self.models.load_trained_models(False, load_pickled)
+        self.ner, self.ner_dates, self.zero_shot_classifier, self.tagger, self.qa_squad = self.models.load_trained_models(False, load_pickled)
 
