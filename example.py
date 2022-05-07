@@ -1,5 +1,4 @@
 from parcv import parcv
-import timeit
 
 parser = parcv.Parser(pickle=True, load_pickled=True)
 
