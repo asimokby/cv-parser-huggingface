@@ -13,7 +13,6 @@ class ResumeSegmenter:
         'professional objective',
         'summary',
         'summary of qualifications',
-        'digital'
     )
 
     work_and_employment = (
@@ -71,6 +70,7 @@ class ResumeSegmenter:
         'skills',
         "other skills",
         "other abilities",
+        'digital skills',
         'career related skills',
         'professional skills',
         'specialized skills',
@@ -195,7 +195,6 @@ class ResumeSegmenter:
                     end_idx = resume_indices[resume_indices.index(start_idx) + 1]
                 
                 sec_idxs[section] = (start_idx, end_idx)
-                # print(start_idx, end_idx)
 
                 resume_segments[section][sub_section] = string_to_search[start_idx:end_idx]
         return sec_idxs
@@ -224,7 +223,6 @@ class ResumeSegmenter:
         else: return 0 
 
     def segment(self, string_to_search):
-        print("Segmenting the Resume..")
         resume_segments = {
             'objective': {},
             'work_and_employment': {},
@@ -249,7 +247,7 @@ class ResumeSegmenter:
                     only_key = list(resume_segments[segment].keys())[0]
                     resume_segments[segment] = resume_segments[segment][only_key][1:]
                     continue
-            if segment not in ["work_and_employment", "education_and_training"]: continue
+            if segment not in ["work_and_employment", "education_and_training", "skills"]: continue
             true_seg = self.find_true_segment(resume_segments[segment], segment)
             if not true_seg: 
                 resume_segments[segment] = []

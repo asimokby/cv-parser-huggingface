@@ -3,7 +3,6 @@ from parcv.ResumeReader import ResumeReader
 from parcv.ResumeSegmenter import ResumeSegmenter
 from parcv.Models import Models 
 import json
-import timeit
 
 class Parser:
     def __init__(self, pickle=False, load_pickled=False):
@@ -14,22 +13,9 @@ class Parser:
         self.parser = ResumeParser(self.ner, self.ner_dates, self.zero_shot_classifier, self.tagger, self.qa_squad) 
 
     def parse(self, file_path):
-
-        timm = timeit.default_timer()
         self.resume_lines = self.reader.read_file(file_path)
-        stp = timeit.default_timer()
-        print("reading file", stp - timm)
-
-        timm = timeit.default_timer()
         self.resume_segments = self.segmenter.segment(self.resume_lines) 
-        stp = timeit.default_timer()
-        print("segmenting file", stp - timm)
-
-
-        timm = timeit.default_timer()
         self.output = self.parser.parse(self.resume_segments)
-        stp = timeit.default_timer()
-        print("parsing file", stp - timm)
         return self.output
 
     def save_as_json(self, file_name="output.json"):

@@ -6,7 +6,6 @@ from dateutil import parser
 import re
 from string import punctuation
 from collections import Counter
-import timeit
 import math
 
 class ResumeParser:
@@ -18,22 +17,32 @@ class ResumeParser:
 
     def parse(self, resume_segments):
         for segment_name in resume_segments:
+            resume_segment = resume_segments[segment_name]
             if segment_name == "contact_info":
-                contact_info = resume_segments[segment_name]
-                self.new_parse_contact_info(contact_info)
+                self.new_parse_contact_info(resume_segment)
             elif segment_name == "work_and_employment":
-                resume_segment = resume_segments[segment_name]
-                timm = timeit.default_timer()
                 self.new_parse_job_history(resume_segment)
-                stp = timeit.default_timer()
-                print("only job history", stp - timm)
-            if segment_name == "education_and_training":
-                resume_segment = resume_segments[segment_name]
+            elif segment_name == "education_and_training":
                 self.parse_education_history(resume_segment)
+            elif segment_name == "skills":
+                self.parse_skills(resume_segment)
         return self.parsed_cv
+    
+    def parse_skills(self, resume_segment):
+        splitter = re.compile(r'[{}]+'.format(re.escape(punctuation)))
+        labels = ['technical skill', 'title', 'other']
+        skills = []
+        for item in resume_segment:
+            for elem in splitter.split(item):
+                elem_splitted = [i for i in elem.strip().split() if i and not i.isdigit() and i.isalpha()]
+                capitalized = all([True if i[0].isupper() else False for i in elem_splitted])
+                if capitalized and elem_splitted and len(elem_splitted) < 4:
+                    candidate_skill = ' '.join(elem_splitted)
+                    if self.belongs_to_label(candidate_skill, 'technical skill', labels):
+                        skills.append(candidate_skill)
+        self.parsed_cv['Skills'] = skills
 
     def parse_education_history(self, resume_segment):
-
         self.parsed_cv["Education"] = [] 
         education_info = []
         questions = ["what is the university's or the school's name?", "what is the field of study?", "what is the qualification?"]
@@ -41,7 +50,6 @@ class ResumeParser:
         school_names = sorted(school_names, key=lambda x: x[1][0])
         majors = self.ask_till_stopping(resume_segment, questions[1], 'field of study', len(school_names))
         qualifications = self.ask_till_stopping(resume_segment, questions[2], 'qualification', len(school_names))
-
         major_on_right = True
         qualification_on_right = True
         for idx, school in enumerate(school_names):
@@ -55,15 +63,12 @@ class ResumeParser:
                 major = major[0]
             if qualification:
                 qualification = qualification[0]
-
             if "high school" in school_name.lower():
                 major, qualification = "", ""
-
             education_item['School Name'] = school_name
             education_item['Field of Study'] = major 
             education_item['Qualification'] = qualification 
             education_info.append(education_item)
-        
         self.parsed_cv["Education"] = education_info
 
     def get_closest_item_to_school(self, items, right_position, idx, idx1, idx2):
@@ -128,7 +133,6 @@ class ResumeParser:
                     answer_idxs.append([answer, (start_idx, end_idx)])
             if len(answer_idxs) > limit:
                 break
-
         return answer_idxs
 
     def new_find_person_name(self, contact_info):
@@ -144,7 +148,6 @@ class ResumeParser:
             splitter = re.compile(r'[\s{}]+'.format(re.escape(punctuation)))
             answer_splitted = splitter.split(line)
             answer_splitted = [i for i in answer_splitted if i and not i.isdigit() and i.isalpha() ]
-            # print(answer_splitted)
             capitalized = all([True if i[0].isupper() else False for i in answer_splitted])
             if len(answer_splitted) > 2:
                 num_of_1 = sum([True if i[0].isupper() else False for i in answer_splitted])
@@ -271,10 +274,7 @@ class ResumeParser:
 
 
     def new_parse_job_history(self, resume_segment):
-        timm = timeit.default_timer()
         idx_job_title = self.find_job_titles(resume_segment)
-        stp = timeit.default_timer()
-        print("job title", stp - timm)
         current_and_below = False
         if not len(idx_job_title): 
             self.parsed_cv["Job History"] = [] 
@@ -291,7 +291,6 @@ class ResumeParser:
 
             if current_and_below: st_span = idx
             else: st_span = idx-1
-            # print("done companies")
             # Dates 
             if ls_idx == len(idx_job_title) - 1: end_span = len(resume_segment) 
             else: end_span = idx_job_title[ls_idx+1][0]
@@ -299,12 +298,10 @@ class ResumeParser:
             job_info["Start Date"] = start
             job_info["End Date"] = end
             job_history.append(job_info)
-            # print("done dates")
         self.parsed_cv["Job History"] = job_history 
 
     def parse_job_history(self, resume_segment):
         idx_job_title = self.get_job_titles(resume_segment)
-        # print("done jobs")
         current_and_below = False
         if not len(idx_job_title): 
             self.parsed_cv["Job History"] = [] 
@@ -320,7 +317,6 @@ class ResumeParser:
             job_info["Company"] = self.get_job_company(line1, line2, resume_segment)
             if current_and_below: st_span = idx
             else: st_span = idx-1
-            # print("done companies")
             # Dates 
             if ls_idx == len(idx_job_title) - 1: end_span = len(resume_segment) 
             else: end_span = idx_job_title[ls_idx+1][0]
@@ -328,7 +324,6 @@ class ResumeParser:
             job_info["Start Date"] = start
             job_info["End Date"] = end
             job_history.append(job_info)
-            # print("done dates")
         self.parsed_cv["Job History"] = job_history 
 
     def get_job_titles(self, resume_segment):

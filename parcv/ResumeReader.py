@@ -78,7 +78,6 @@ class ResumeReader:
         file : Give path of resume file
         docx_parser : Enter docx2txt or tika, by default is tika
         """
-        print("Reading the Resume...")
         # file = "/content/Asst Manager Trust Administration.docx"
         file = os.path.join(file)
         if file.endswith('docx') or file.endswith('doc'):
