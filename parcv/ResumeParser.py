@@ -1,3 +1,4 @@
+from tracemalloc import start
 from matplotlib.pyplot import contour
 from parcv.Models import Models
 from datetime import datetime
@@ -6,6 +7,7 @@ import re
 from string import punctuation
 from collections import Counter
 import timeit
+import math
 
 class ResumeParser:
 
@@ -21,19 +23,113 @@ class ResumeParser:
                 self.new_parse_contact_info(contact_info)
             elif segment_name == "work_and_employment":
                 resume_segment = resume_segments[segment_name]
+                timm = timeit.default_timer()
                 self.new_parse_job_history(resume_segment)
-
-        # resume_segment = resume_segments['work_and_employment']
-        # res = self.get_job_titles(resume_segment)
-
-        # print(res)
-        # self.find_job_titles(resume_segment)
-        # qa_input = {'question': "What is the job name?", 'context': cv_text}
-        # out = self.qa_squad(qa_input)
-        # print(cv_text)
-        # print(out)
+                stp = timeit.default_timer()
+                print("only job history", stp - timm)
+            if segment_name == "education_and_training":
+                resume_segment = resume_segments[segment_name]
+                self.parse_education_history(resume_segment)
         return self.parsed_cv
 
+    def parse_education_history(self, resume_segment):
+
+        self.parsed_cv["Education"] = [] 
+        education_info = []
+        questions = ["what is the university's or the school's name?", "what is the field of study?", "what is the qualification?"]
+        school_names = self.ask_till_stopping(resume_segment, questions[0], 'school name', 10)
+        school_names = sorted(school_names, key=lambda x: x[1][0])
+        majors = self.ask_till_stopping(resume_segment, questions[1], 'field of study', len(school_names))
+        qualifications = self.ask_till_stopping(resume_segment, questions[2], 'qualification', len(school_names))
+
+        major_on_right = True
+        qualification_on_right = True
+        for idx, school in enumerate(school_names):
+            education_item = {}
+            school_name, (idx1, idx2) = school
+            major, major_on_right = self.get_closest_item_to_school(majors, major_on_right, idx, idx1, idx2)
+            qualification, qualification_on_right = self.get_closest_item_to_school(qualifications, qualification_on_right, idx, idx1, idx2)
+            majors.remove(major)
+            qualifications.remove(qualification)
+            if major:
+                major = major[0]
+            if qualification:
+                qualification = qualification[0]
+
+            if "high school" in school_name.lower():
+                major, qualification = "", ""
+
+            education_item['School Name'] = school_name
+            education_item['Field of Study'] = major 
+            education_item['Qualification'] = qualification 
+            education_info.append(education_item)
+        
+        self.parsed_cv["Education"] = education_info
+
+    def get_closest_item_to_school(self, items, right_position, idx, idx1, idx2):
+        closest_left = math.inf
+        closest_left_item = None
+        closest_right = math.inf
+        closest_right_item = None
+        for item in items:
+            st_idx, end_idx = item[1]
+            if end_idx <= idx1:
+                if idx1 - end_idx < closest_left:
+                    closest_left = idx1 - end_idx
+                    closest_left_item = item
+            elif st_idx >= idx2:
+                if st_idx - idx2 < closest_right:
+                    closest_right = st_idx - idx2
+                    closest_right_item = item
+        if idx == 0:
+            if closest_right < closest_left: right_position = True
+            else: right_position = False
+
+        if right_position:
+            if closest_right_item:
+                return closest_right_item, right_position
+            elif closest_left_item:
+                return closest_left_item, right_position
+        else:
+            if closest_left_item:
+                return closest_left_item, right_position
+            elif closest_right_item:
+                return closest_right_item, right_position
+        return "", right_position
+
+
+    def ask_till_stopping(self, resume_segment, question, category, limit):
+        labels = ['school name', 'field of study', 'degree', "location", "other"]
+        context = ' , '.join(resume_segment)
+        answer_idxs = [] 
+        if not context.strip(): return answer_idxs
+        while True:
+            qa_input = {'question': question, 'context': context}
+            out = self.qa_squad(qa_input)
+            start_idx, end_idx, answer = out['start'], out['end'], out['answer']
+            if not answer:
+                break
+            context = context.replace(context[start_idx:end_idx], "")
+            if not context.strip(): return answer_idxs
+            splitter = re.compile(r'[\s{}]+'.format(re.escape(punctuation)))
+            answer_splitted = splitter.split(answer)
+            answer_splitted = [i for i in answer_splitted if i and not i.isdigit() and i.isalpha() ]
+            capitalized = all([True if i[0].isupper() else False for i in answer_splitted])
+            if len(answer_splitted) > 2:
+                num_of_1 = sum([True if i[0].isupper() else False for i in answer_splitted])
+                capitalized = num_of_1 > len(answer_splitted)//2
+            if not capitalized:
+                break
+            else:
+                if category == 'school name':
+                    if self.belongs_to_label(answer, category, labels):
+                        answer_idxs.append([answer, (start_idx, end_idx)])
+                else:
+                    answer_idxs.append([answer, (start_idx, end_idx)])
+            if len(answer_idxs) > limit:
+                break
+
+        return answer_idxs
 
     def new_find_person_name(self, contact_info):
         context = ' , '.join(contact_info)
@@ -41,6 +137,28 @@ class ResumeParser:
         out = self.qa_squad(qa_input)
         return out['answer']
 
+    def find_school_names(self, resume_segment):
+        labels = ["institution", "degree", "field of study"]
+        idx_line = []
+        for idx, line in enumerate(resume_segment):
+            splitter = re.compile(r'[\s{}]+'.format(re.escape(punctuation)))
+            answer_splitted = splitter.split(line)
+            answer_splitted = [i for i in answer_splitted if i and not i.isdigit() and i.isalpha() ]
+            # print(answer_splitted)
+            capitalized = all([True if i[0].isupper() else False for i in answer_splitted])
+            if len(answer_splitted) > 2:
+                num_of_1 = sum([True if i[0].isupper() else False for i in answer_splitted])
+                capitalized = num_of_1 > len(answer_splitted)//2
+            if not capitalized: continue
+
+            qa_input = {'question': "What is the school's name?", 'context': line}
+            out = self.qa_squad(qa_input)
+            answer = out['answer']
+            if self.belongs_to_label(line, "school", labels):
+                if answer:
+                    idx_line.append((idx, answer))
+
+        return idx_line
     def find_job_titles(self, resume_segment):
         labels = ["company", "institution", "job title", "details"]
         idx_line = []
@@ -48,7 +166,6 @@ class ResumeParser:
             splitter = re.compile(r'[\s{}]+'.format(re.escape(punctuation)))
             answer_splitted = splitter.split(line)
             answer_splitted = [i for i in answer_splitted if i and not i.isdigit() and i.isalpha() ]
-            # print(answer_splitted)
             capitalized = all([True if i[0].isupper() else False for i in answer_splitted])
             if len(answer_splitted) > 2:
                 num_of_1 = sum([True if i[0].isupper() else False for i in answer_splitted])
@@ -72,7 +189,6 @@ class ResumeParser:
             return True
         return False
 
-
     def new_parse_contact_info(self, contact_info):
         contact_info_dict = {}
         name = self.new_find_person_name(contact_info)
@@ -80,18 +196,14 @@ class ResumeParser:
         phone1, phone2 = self.find_phone_numbers(contact_info) 
         address = self.find_address(contact_info)
         contact_info_dict["Email"] = email
-        if phone1: 
-            contact_info_dict["phone1"] = phone1 
-        if phone2:
-            contact_info_dict["phone2"] = phone2
-        if address: 
-            contact_info_dict['address'] = address
+        contact_info_dict["phone1"] = phone1 
+        contact_info_dict["phone2"] = phone2
+        contact_info_dict['address'] = address
         self.parsed_cv['Name'] = name
         self.parsed_cv['Contact Info'] = contact_info_dict
 
     def find_phone_numbers(self, contact_info):
         context = ' , '.join(contact_info)
-        print(context)
         qa_input = {'question': "What is the phone number?", 'context': context}
         out = self.qa_squad(qa_input)
         answer1 = out['answer'] 
@@ -105,7 +217,6 @@ class ResumeParser:
         if count_nums(answer2) < 7:
             answer2 = ""
         return answer1, answer2 
-    
 
     def find_address(self, contact_info):
         context = ' , '.join(contact_info)
@@ -116,9 +227,6 @@ class ResumeParser:
             return address
         else: 
             return ""
-
-
-        
 
     def parse_contact_info(self, contact_info):
         contact_info_dict = {}
@@ -166,7 +274,7 @@ class ResumeParser:
         timm = timeit.default_timer()
         idx_job_title = self.find_job_titles(resume_segment)
         stp = timeit.default_timer()
-        print(stp - timm)
+        print("job title", stp - timm)
         current_and_below = False
         if not len(idx_job_title): 
             self.parsed_cv["Job History"] = [] 
@@ -175,15 +283,11 @@ class ResumeParser:
         job_history = []
         for ls_idx, (idx, job_title) in enumerate(idx_job_title): 
             job_info = {}
-            # job_info["Job Title"] = self.filter_job_title(job_title) 
             job_info["Job Title"] = job_title 
             # company 
             if current_and_below: line1, line2 = idx, idx+1
             else: line1, line2 = idx, idx-1 
-            # job_info["Company"] = self.get_job_company(line1, line2, resume_segment)
-            
             job_info["Company"] = self.new_get_job_company(line1, line2, resume_segment)
-
 
             if current_and_below: st_span = idx
             else: st_span = idx-1
@@ -210,12 +314,10 @@ class ResumeParser:
         for ls_idx, (idx, job_title) in enumerate(idx_job_title): 
             job_info = {}
             job_info["Job Title"] = self.filter_job_title(job_title) 
-            # job_info["Job Title"] = job_title 
             # company 
             if current_and_below: line1, line2 = idx, idx+1
             else: line1, line2 = idx, idx-1 
             job_info["Company"] = self.get_job_company(line1, line2, resume_segment)
-            # print(line1, line2)
             if current_and_below: st_span = idx
             else: st_span = idx-1
             # print("done companies")

@@ -204,7 +204,7 @@ class ResumeSegmenter:
         segment_classes = {
             'objective': ["objective", "other"],
             'work_and_employment':["employment history", "other"],
-            'education_and_training': ["education", "other"],
+            'education_and_training': ["education and universities", "other"],
             'skills': ["skills", "other"],
             'accomplishments': ["accomplishments", "other"],
             'misc': ["misc", "other"],
@@ -249,7 +249,7 @@ class ResumeSegmenter:
                     only_key = list(resume_segments[segment].keys())[0]
                     resume_segments[segment] = resume_segments[segment][only_key][1:]
                     continue
-            if segment != "work_and_employment": continue
+            if segment not in ["work_and_employment", "education_and_training"]: continue
             true_seg = self.find_true_segment(resume_segments[segment], segment)
             if not true_seg: 
                 resume_segments[segment] = []
